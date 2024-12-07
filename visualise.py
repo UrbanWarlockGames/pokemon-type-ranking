@@ -40,6 +40,10 @@ triple_type_values_df_display = triple_type_values_df_display.sort_values(by="To
 # Initialise the Dash app
 app = dash.Dash(__name__)
 
+@app.server.route('/healthz')
+def health_check():
+    return "OK", 200
+
 app.layout = html.Div([
     html.H1("Pokémon Type Rankings Viewer"),
 
@@ -118,4 +122,5 @@ app.layout = html.Div([
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 8050))  # Get the port from the environment
+    print(f"Running on port {port}")  # Debug print for logs
     app.run_server(host="0.0.0.0", port=port, debug=True)

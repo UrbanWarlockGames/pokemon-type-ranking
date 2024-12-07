@@ -38,16 +38,12 @@ type_values_df = type_values_df.sort_values(by="Total Score", ascending=True)
 dual_type_values_df_display = dual_type_values_df_display.sort_values(by="Total Score", ascending=True)
 triple_type_values_df_display = triple_type_values_df_display.sort_values(by="Total Score", ascending=True)
 
-# Normalise the Total Score column for visualisation
+# Normalise the Total Score, Defensive Score, and Offensive Score columns for visualisation
 scaler = MinMaxScaler()
-type_values_df["Normalised Score"] = scaler.fit_transform(type_values_df[["Total Score"]])
-dual_type_values_df_display["Normalised Score"] = scaler.fit_transform(dual_type_values_df_display[["Total Score"]])
-triple_type_values_df_display["Normalised Score"] = scaler.fit_transform(triple_type_values_df_display[["Total Score"]])
-
-# Add a column to classify scores as Positive or Negative for colour coding
-type_values_df['Score Type'] = type_values_df['Total Score'].apply(lambda x: 'Positive' if x >= 0 else 'Negative')
-dual_type_values_df_display['Score Type'] = dual_type_values_df_display['Total Score'].apply(lambda x: 'Positive' if x >= 0 else 'Negative')
-triple_type_values_df_display['Score Type'] = triple_type_values_df_display['Total Score'].apply(lambda x: 'Positive' if x >= 0 else 'Negative')
+for column in ["Total Score", "Defensive Score", "Offensive Score"]:
+    type_values_df[f"Normalised {column}"] = scaler.fit_transform(type_values_df[[column]])
+    dual_type_values_df_display[f"Normalised {column}"] = scaler.fit_transform(dual_type_values_df_display[[column]])
+    triple_type_values_df_display[f"Normalised {column}"] = scaler.fit_transform(triple_type_values_df_display[[column]])
 
 # Initialise the Dash app
 app = dash.Dash(__name__)
@@ -96,56 +92,101 @@ app.layout = html.Div([
     ),
 
     html.H2("Single-Type Rankings Visualisation"),
-    dcc.Graph(
-        id='single-type-visualisation',
-        figure=px.bar(
-            type_values_df,
-            x="First Type",
-            y="Normalised Score",
-            color="Score Type",
-            title="Single-Type Rankings (Normalised)",
-            labels={"Normalised Score": "Normalised Score", "First Type": "Type", "Score Type": "Score Type"}
-        ).update_layout(
-            xaxis={'categoryorder': 'total ascending'},
-            yaxis=dict(range=[0, 1.2]),
-            bargap=0.2
-        )
+    dcc.RadioItems(
+        id='score-type-radio',
+        options=[
+            {'label': 'Total', 'value': 'Normalised Total Score'},
+            {'label': 'Defense', 'value': 'Normalised Defensive Score'},
+            {'label': 'Offense', 'value': 'Normalised Offensive Score'}
+        ],
+        value='Normalised Total Score',
+        inline=True
     ),
+    dcc.Graph(id='single-type-visualisation'),
 
     html.H2("Dual-Type Rankings Visualisation"),
-    dcc.Graph(
-        id='dual-type-visualisation',
-        figure=px.bar(
-            dual_type_values_df_display,
-            x="Combined Type",
-            y="Normalised Score",
-            color="Score Type",
-            title="Dual-Type Rankings (Normalised)",
-            labels={"Normalised Score": "Normalised Score", "Combined Type": "Type Combination", "Score Type": "Score Type"}
-        ).update_layout(
-            xaxis={'categoryorder': 'total ascending'},
-            yaxis=dict(range=[0, 1.2]),
-            bargap=0.2
-        )
+    dcc.RadioItems(
+        id='dual-score-type-radio',
+        options=[
+            {'label': 'Total', 'value': 'Normalised Total Score'},
+            {'label': 'Defense', 'value': 'Normalised Defensive Score'},
+            {'label': 'Offense', 'value': 'Normalised Offensive Score'}
+        ],
+        value='Normalised Total Score',
+        inline=True
     ),
+    dcc.Graph(id='dual-type-visualisation'),
 
     html.H2("Triple-Type Rankings Visualisation"),
-    dcc.Graph(
-        id='triple-type-visualisation',
-        figure=px.bar(
-            triple_type_values_df_display,
-            x="Combined Type",
-            y="Normalised Score",
-            color="Score Type",
-            title="Triple-Type Rankings (Normalised)",
-            labels={"Normalised Score": "Normalised Score", "Combined Type": "Type Combination", "Score Type": "Score Type"}
-        ).update_layout(
-            xaxis={'categoryorder': 'total ascending'},
-            yaxis=dict(range=[0, 1.2]),
-            bargap=0.2
-        )
-    )
+    dcc.RadioItems(
+        id='triple-score-type-radio',
+        options=[
+            {'label': 'Total', 'value': 'Normalised Total Score'},
+            {'label': 'Defense', 'value': 'Normalised Defensive Score'},
+            {'label': 'Offense', 'value': 'Normalised Offensive Score'}
+        ],
+        value='Normalised Total Score',
+        inline=True
+    ),
+    dcc.Graph(id='triple-type-visualisation')
 ])
+
+@app.callback(
+    dash.dependencies.Output('single-type-visualisation', 'figure'),
+    [dash.dependencies.Input('score-type-radio', 'value')]
+)
+def update_single_type_graph(selected_score):
+    type_values_df['Score Type'] = type_values_df[selected_score].apply(lambda x: 'Positive' if x >= 0.5 else 'Negative')
+    return px.bar(
+        type_values_df,
+        x="First Type",
+        y=selected_score,
+        color="Score Type",
+        title="Single-Type Rankings",
+        labels={selected_score: selected_score, "First Type": "Type", "Score Type": "Score Type"}
+    ).update_layout(
+        xaxis={'categoryorder': 'total ascending'},
+        yaxis=dict(range=[0, 1.2]),
+        bargap=0.2
+    )
+
+@app.callback(
+    dash.dependencies.Output('dual-type-visualisation', 'figure'),
+    [dash.dependencies.Input('dual-score-type-radio', 'value')]
+)
+def update_dual_type_graph(selected_score):
+    dual_type_values_df_display['Score Type'] = dual_type_values_df_display[selected_score].apply(lambda x: 'Positive' if x >= 0.5 else 'Negative')
+    return px.bar(
+        dual_type_values_df_display,
+        x="Combined Type",
+        y=selected_score,
+        color="Score Type",
+        title="Dual-Type Rankings",
+        labels={selected_score: selected_score, "Combined Type": "Type Combination", "Score Type": "Score Type"}
+    ).update_layout(
+        xaxis={'categoryorder': 'total ascending'},
+        yaxis=dict(range=[0, 1.2]),
+        bargap=0.2
+    )
+
+@app.callback(
+    dash.dependencies.Output('triple-type-visualisation', 'figure'),
+    [dash.dependencies.Input('triple-score-type-radio', 'value')]
+)
+def update_triple_type_graph(selected_score):
+    triple_type_values_df_display['Score Type'] = triple_type_values_df_display[selected_score].apply(lambda x: 'Positive' if x >= 0.5 else 'Negative')
+    return px.bar(
+        triple_type_values_df_display,
+        x="Combined Type",
+        y=selected_score,
+        color="Score Type",
+        title="Triple-Type Rankings",
+        labels={selected_score: selected_score, "Combined Type": "Type Combination", "Score Type": "Score Type"}
+    ).update_layout(
+        xaxis={'categoryorder': 'total ascending'},
+        yaxis=dict(range=[0, 1.2]),
+        bargap=0.2
+    )
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 8050))

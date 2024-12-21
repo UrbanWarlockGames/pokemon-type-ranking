@@ -68,6 +68,11 @@ app.layout = html.Div([
     ),
 
     html.H2("Dual-Type Rankings"),
+    dcc.Input(
+        id='dual-type-search',
+        type='text',
+        placeholder='Search by Type',
+    ),
     dash_table.DataTable(
         id='dual-type-table',
         columns=[
@@ -80,6 +85,11 @@ app.layout = html.Div([
     ),
 
     html.H2("Tri-Type Rankings"),
+    dcc.Input(
+        id='tri-type-search',
+        type='text',
+        placeholder='Search by Type',
+    ),
     dash_table.DataTable(
         id='triple-type-table',
         columns=[
@@ -132,10 +142,39 @@ app.layout = html.Div([
 ])
 
 @app.callback(
+    dash.dependencies.Output('dual-type-table', 'data'),
+    [dash.dependencies.Input('dual-type-search', 'value')]
+)
+def update_dual_type_table(search_query):
+    if not search_query:
+        return dual_type_values_df_display.to_dict('records')
+    filtered_df = dual_type_values_df_display[
+        dual_type_values_df_display['First Type'].str.contains(search_query, case=False, na=False) |
+        dual_type_values_df_display['Second Type'].str.contains(search_query, case=False, na=False)
+    ]
+    return filtered_df.to_dict('records')
+
+@app.callback(
+    dash.dependencies.Output('triple-type-table', 'data'),
+    [dash.dependencies.Input('tri-type-search', 'value')]
+)
+def update_triple_type_table(search_query):
+    if not search_query:
+        return triple_type_values_df_display.to_dict('records')
+    filtered_df = triple_type_values_df_display[
+        triple_type_values_df_display['First Type'].str.contains(search_query, case=False, na=False) |
+        triple_type_values_df_display['Second Type'].str.contains(search_query, case=False, na=False) |
+        triple_type_values_df_display['Third Type'].str.contains(search_query, case=False, na=False)
+    ]
+    return filtered_df.to_dict('records')
+
+@app.callback(
     dash.dependencies.Output('single-type-visualisation', 'figure'),
     [dash.dependencies.Input('score-type-radio', 'value')]
 )
 def update_single_type_graph(selected_score):
+    if selected_score not in type_values_df.columns:
+        return px.bar(title="Invalid Selection", labels={"First Type": "Type"})
     type_values_df['Score Type'] = type_values_df[selected_score].apply(lambda x: 'Positive' if x >= 0.5 else 'Negative')
     return px.bar(
         type_values_df,
@@ -155,9 +194,14 @@ def update_single_type_graph(selected_score):
     [dash.dependencies.Input('dual-score-type-radio', 'value')]
 )
 def update_dual_type_graph(selected_score):
-    dual_type_values_df_display['Score Type'] = dual_type_values_df_display[selected_score].apply(lambda x: 'Positive' if x >= 0.5 else 'Negative')
+    if selected_score not in dual_type_values_df_display.columns:
+        return px.bar(title="Invalid Selection", labels={"Combined Type": "Type Combination"})
+    valid_data = dual_type_values_df_display.dropna(subset=[selected_score, "Combined Type"])
+    if valid_data.empty:
+        return px.bar(title="No Data Available", labels={"Combined Type": "Type Combination", selected_score: "Score"})
+    valid_data['Score Type'] = valid_data[selected_score].apply(lambda x: 'Positive' if x >= 0.5 else 'Negative')
     return px.bar(
-        dual_type_values_df_display,
+        valid_data,
         x="Combined Type",
         y=selected_score,
         color="Score Type",
@@ -174,9 +218,14 @@ def update_dual_type_graph(selected_score):
     [dash.dependencies.Input('triple-score-type-radio', 'value')]
 )
 def update_triple_type_graph(selected_score):
-    triple_type_values_df_display['Score Type'] = triple_type_values_df_display[selected_score].apply(lambda x: 'Positive' if x >= 0.5 else 'Negative')
+    if selected_score not in triple_type_values_df_display.columns:
+        return px.bar(title="Invalid Selection", labels={"Combined Type": "Type Combination"})
+    valid_data = triple_type_values_df_display.dropna(subset=[selected_score, "Combined Type"])
+    if valid_data.empty:
+        return px.bar(title="No Data Available", labels={"Combined Type": "Type Combination", selected_score: "Score"})
+    valid_data['Score Type'] = valid_data[selected_score].apply(lambda x: 'Positive' if x >= 0.5 else 'Negative')
     return px.bar(
-        triple_type_values_df_display,
+        valid_data,
         x="Combined Type",
         y=selected_score,
         color="Score Type",

@@ -3,63 +3,54 @@ import pandas as pd
 import plotly.express as px
 import dash
 from dash import dcc, html, dash_table
+from dash.dependencies import Input, Output
 from sklearn.preprocessing import MinMaxScaler
 
-# Get the directory of the current script
-script_dir = os.path.dirname(os.path.abspath(__file__))
+def load_generation_data(gen):
+    base_path = os.path.dirname(os.path.abspath(__file__))
 
-# Load the data using paths relative to the script's directory
-type_values_path = os.path.join(script_dir, "monotype_combinations.csv")
-dual_type_values_path = os.path.join(script_dir, "dualtype_combinations.csv")
-triple_type_values_path = os.path.join(script_dir, "tripletype_combinations.csv")
+    if gen == "GEN9":
+        mono_file = "monotype_combinations.csv"
+        dual_file = "dualtype_combinations.csv"
+        triple_file = "tripletype_combinations.csv"
+    else:
+        mono_file = f"monotype_combinations{gen}.csv"
+        dual_file = f"dualtype_combinations{gen}.csv"
+        triple_file = f"tripletype_combinations{gen}.csv"
 
-# Verify file existence (optional but recommended for debugging)
-assert os.path.exists(type_values_path), f"File not found: {type_values_path}"
-assert os.path.exists(dual_type_values_path), f"File not found: {dual_type_values_path}"
-assert os.path.exists(triple_type_values_path), f"File not found: {triple_type_values_path}"
+    mono = pd.read_csv(os.path.join(base_path, mono_file))
+    dual = pd.read_csv(os.path.join(base_path, dual_file))
+    triple = pd.read_csv(os.path.join(base_path, triple_file))
 
-# Read CSV files
-type_values_df = pd.read_csv(type_values_path)
-dual_type_values_df = pd.read_csv(dual_type_values_path)
-triple_type_values_df = pd.read_csv(triple_type_values_path)
+    # Add Combined Type columns
+    dual["Combined Type"] = dual.apply(lambda row: '/'.join(filter(None, [str(row["First Type"]), str(row["Second Type"])])), axis=1)
+    triple["Combined Type"] = triple.apply(lambda row: '/'.join(filter(None, [str(row["First Type"]), str(row["Second Type"]), str(row["Third Type"])])), axis=1)
 
-# Combine types for display purposes only
-def combine_types(row, type_columns):
-    return '/'.join(str(row[col]) for col in type_columns if pd.notna(row[col]))
+    # Add Rank column based on Total Score
+    for df in [mono, dual, triple]:
+        df["Rank"] = df["Total Score"].rank(ascending=False, method="min").astype(int)
+        df.sort_values("Rank", inplace=True)
 
-dual_type_values_df_display = dual_type_values_df.copy()
-dual_type_values_df_display['Combined Type'] = dual_type_values_df.apply(combine_types, axis=1, type_columns=["First Type", "Second Type"])
+    # Reorder Rank to be first column
+    def move_rank_first(df):
+        cols = list(df.columns)
+        if "Rank" in cols:
+            cols.insert(0, cols.pop(cols.index("Rank")))
+            return df[cols]
+        return df
 
-triple_type_values_df_display = triple_type_values_df.copy()
-triple_type_values_df_display['Combined Type'] = triple_type_values_df.apply(combine_types, axis=1, type_columns=["First Type", "Second Type", "Third Type"])
+    mono = move_rank_first(mono)
+    dual = move_rank_first(dual)
+    triple = move_rank_first(triple)
 
-# Sort dataframes by Total Score
-type_values_df = type_values_df.sort_values(by="Total Score", ascending=True)
-dual_type_values_df_display = dual_type_values_df_display.sort_values(by="Total Score", ascending=True)
-triple_type_values_df_display = triple_type_values_df_display.sort_values(by="Total Score", ascending=True)
+    # Normalise key scores
+    scaler = MinMaxScaler()
+    for col in ["Total Score", "Defensive Score", "Offensive Score"]:
+        mono[f"Normalised {col}"] = scaler.fit_transform(mono[[col]]).round(4)
+        dual[f"Normalised {col}"] = scaler.fit_transform(dual[[col]]).round(4)
+        triple[f"Normalised {col}"] = scaler.fit_transform(triple[[col]]).round(4)
 
-# Add rank columns (descending: highest score = Rank 1)
-type_values_df["Rank"] = type_values_df["Total Score"].rank(ascending=False, method="min").astype(int)
-dual_type_values_df_display["Rank"] = dual_type_values_df_display["Total Score"].rank(ascending=False, method="min").astype(int)
-triple_type_values_df_display["Rank"] = triple_type_values_df_display["Total Score"].rank(ascending=False, method="min").astype(int)
-
-def move_rank_first(df):
-    cols = list(df.columns)
-    if "Rank" in cols:
-        cols.insert(0, cols.pop(cols.index("Rank")))
-        df = df[cols]
-    return df
-
-type_values_df = move_rank_first(type_values_df)
-dual_type_values_df_display = move_rank_first(dual_type_values_df_display)
-triple_type_values_df_display = move_rank_first(triple_type_values_df_display)
-
-# Normalise the Total Score, Defensive Score, and Offensive Score columns for visualisation
-scaler = MinMaxScaler()
-for column in ["Total Score", "Defensive Score", "Offensive Score"]:
-    type_values_df[f"Normalised {column}"] = scaler.fit_transform(type_values_df[[column]]).round(4)
-    dual_type_values_df_display[f"Normalised {column}"] = scaler.fit_transform(dual_type_values_df_display[[column]]).round(4)
-    triple_type_values_df_display[f"Normalised {column}"] = scaler.fit_transform(triple_type_values_df_display[[column]]).round(4)
+    return mono, dual, triple
 
 # Initialise the Dash app
 app = dash.Dash(__name__)
@@ -71,13 +62,23 @@ def health_check():
 app.layout = html.Div([
     html.H1("Pokémon Type Rankings Viewer"),
 
+dcc.Dropdown(
+    id='generation-dropdown',
+    options=[
+        {'label': 'VI-IX', 'value': 'GEN9'},
+        {'label': 'I', 'value': 'GEN1'},
+        {'label': 'II-V', 'value': 'GEN5'},
+    ],
+    value='GEN9',  # Default selected generation
+    clearable=False,
+    style={'width': '300px'}
+),
+
     html.H2("Monotype Rankings"),
     dash_table.DataTable(
         id='single-type-table',
-        columns=[
-            {"name": col, "id": col, "deletable": False, "selectable": True} for col in type_values_df.columns
-        ],
-        data=type_values_df.to_dict('records'),
+        columns=[],
+        data=[],
         sort_action="native",
         page_size=20,
         style_table={'overflowX': 'auto'},
@@ -91,10 +92,8 @@ app.layout = html.Div([
     ),
     dash_table.DataTable(
         id='dual-type-table',
-        columns=[
-            {"name": col, "id": col, "deletable": False, "selectable": True} for col in dual_type_values_df_display.columns
-        ],
-        data=dual_type_values_df_display.to_dict('records'),
+        columns=[],
+        data=[],
         sort_action="native",
         page_size=20,
         style_table={'overflowX': 'auto'},
@@ -102,16 +101,14 @@ app.layout = html.Div([
 
     html.H2("Tri-Type Rankings"),
     dcc.Input(
-        id='tri-type-search',
+        id='triple-type-search',
         type='text',
         placeholder='Search by Type',
     ),
     dash_table.DataTable(
         id='triple-type-table',
-        columns=[
-            {"name": col, "id": col, "deletable": False, "selectable": True} for col in triple_type_values_df_display.columns
-        ],
-        data=triple_type_values_df_display.to_dict('records'),
+        columns=[],
+        data=[],
         sort_action="native",
         page_size=20,
         style_table={'overflowX': 'auto'},
@@ -158,47 +155,65 @@ app.layout = html.Div([
 ])
 
 @app.callback(
-    dash.dependencies.Output('dual-type-table', 'data'),
-    [dash.dependencies.Input('dual-type-search', 'value')]
+    [Output('single-type-table', 'data'),
+     Output('single-type-table', 'columns')],
+    Input('generation-dropdown', 'value')
 )
-def update_dual_type_table(search_query):
-    if not search_query:
-        return dual_type_values_df_display.to_dict('records')
-    filtered_df = dual_type_values_df_display[
-        dual_type_values_df_display['First Type'].str.contains(search_query, case=False, na=False) |
-        dual_type_values_df_display['Second Type'].str.contains(search_query, case=False, na=False)
-    ]
-    return filtered_df.to_dict('records')
+def update_single_type_table(gen):
+    mono, _, _ = load_generation_data(gen)
+    columns = [{"name": col, "id": col, "deletable": False, "selectable": True} for col in mono.columns]
+    return mono.to_dict('records'), columns
 
 @app.callback(
-    dash.dependencies.Output('triple-type-table', 'data'),
-    [dash.dependencies.Input('tri-type-search', 'value')]
+    [Output('dual-type-table', 'data'),
+     Output('dual-type-table', 'columns')],
+    [Input('generation-dropdown', 'value'),
+     Input('dual-type-search', 'value')]
 )
-def update_triple_type_table(search_query):
-    if not search_query:
-        return triple_type_values_df_display.to_dict('records')
-    filtered_df = triple_type_values_df_display[
-        triple_type_values_df_display['First Type'].str.contains(search_query, case=False, na=False) |
-        triple_type_values_df_display['Second Type'].str.contains(search_query, case=False, na=False) |
-        triple_type_values_df_display['Third Type'].str.contains(search_query, case=False, na=False)
-    ]
-    return filtered_df.to_dict('records')
+def update_dual_type_table(gen, search_query):
+    _, dual, _ = load_generation_data(gen)
+    if search_query:
+        dual = dual[
+            dual['First Type'].str.contains(search_query, case=False, na=False) |
+            dual['Second Type'].str.contains(search_query, case=False, na=False)
+        ]
+    columns = [{"name": col, "id": col, "deletable": False, "selectable": True} for col in dual.columns]
+    return dual.to_dict('records'), columns
 
 @app.callback(
-    dash.dependencies.Output('single-type-visualisation', 'figure'),
-    [dash.dependencies.Input('score-type-radio', 'value')]
+    [Output('triple-type-table', 'data'),
+     Output('triple-type-table', 'columns')],
+    [Input('generation-dropdown', 'value'),
+     Input('triple-type-search', 'value')]
 )
-def update_single_type_graph(selected_score):
-    if selected_score not in type_values_df.columns:
+def update_triple_type_table(gen, search_query):
+    _, _, triple = load_generation_data(gen)
+    if search_query:
+        triple = triple[
+            triple['First Type'].str.contains(search_query, case=False, na=False) |
+            triple['Second Type'].str.contains(search_query, case=False, na=False) |
+            triple['Third Type'].str.contains(search_query, case=False, na=False)
+        ]
+    columns = [{"name": col, "id": col, "deletable": False, "selectable": True} for col in triple.columns]
+    return triple.to_dict('records'), columns
+
+@app.callback(
+    Output('single-type-visualisation', 'figure'),
+    [Input('generation-dropdown', 'value'),
+     Input('score-type-radio', 'value')]
+)
+def update_single_type_graph(gen, selected_score):
+    mono, _, _ = load_generation_data(gen)
+    if selected_score not in mono.columns:
         return px.bar(title="Invalid Selection", labels={"First Type": "Type"})
-    type_values_df['Score Type'] = type_values_df[selected_score].apply(lambda x: 'Positive' if x >= 0.5 else 'Negative')
+    mono['Score Type'] = mono[selected_score].apply(lambda x: 'Positive' if x >= 0.5 else 'Negative')
     return px.bar(
-        type_values_df,
+        mono,
         x="First Type",
         y=selected_score,
         color="Score Type",
-        title="Single-Type Rankings",
-        labels={selected_score: selected_score, "First Type": "Type", "Score Type": "Score Type"}
+        title=f"Single-Type Rankings – {gen}",
+        labels={"First Type": "Type", selected_score: selected_score}
     ).update_layout(
         xaxis={'categoryorder': 'total ascending'},
         yaxis=dict(range=[0, 1.2]),
@@ -206,23 +221,25 @@ def update_single_type_graph(selected_score):
     )
 
 @app.callback(
-    dash.dependencies.Output('dual-type-visualisation', 'figure'),
-    [dash.dependencies.Input('dual-score-type-radio', 'value')]
+    Output('dual-type-visualisation', 'figure'),
+    [Input('generation-dropdown', 'value'),
+     Input('dual-score-type-radio', 'value')]
 )
-def update_dual_type_graph(selected_score):
-    if selected_score not in dual_type_values_df_display.columns:
+def update_dual_type_graph(gen, selected_score):
+    _, dual, _ = load_generation_data(gen)
+    if selected_score not in dual.columns:
         return px.bar(title="Invalid Selection", labels={"Combined Type": "Type Combination"})
-    valid_data = dual_type_values_df_display.dropna(subset=[selected_score, "Combined Type"])
-    if valid_data.empty:
-        return px.bar(title="No Data Available", labels={"Combined Type": "Type Combination", selected_score: "Score"})
-    valid_data['Score Type'] = valid_data[selected_score].apply(lambda x: 'Positive' if x >= 0.5 else 'Negative')
+    dual = dual.dropna(subset=[selected_score, "Combined Type"])
+    if dual.empty:
+        return px.bar(title="No Data Available", labels={"Combined Type": "Type Combination"})
+    dual['Score Type'] = dual[selected_score].apply(lambda x: 'Positive' if x >= 0.5 else 'Negative')
     return px.bar(
-        valid_data,
+        dual,
         x="Combined Type",
         y=selected_score,
         color="Score Type",
-        title="Dual-Type Rankings",
-        labels={selected_score: selected_score, "Combined Type": "Type Combination", "Score Type": "Score Type"}
+        title=f"Dual-Type Rankings – {gen}",
+        labels={"Combined Type": "Type Combination", selected_score: selected_score}
     ).update_layout(
         xaxis={'categoryorder': 'total ascending'},
         yaxis=dict(range=[0, 1.2]),
@@ -230,23 +247,25 @@ def update_dual_type_graph(selected_score):
     )
 
 @app.callback(
-    dash.dependencies.Output('triple-type-visualisation', 'figure'),
-    [dash.dependencies.Input('triple-score-type-radio', 'value')]
+    Output('triple-type-visualisation', 'figure'),
+    [Input('generation-dropdown', 'value'),
+     Input('triple-score-type-radio', 'value')]
 )
-def update_triple_type_graph(selected_score):
-    if selected_score not in triple_type_values_df_display.columns:
+def update_triple_type_graph(gen, selected_score):
+    _, _, triple = load_generation_data(gen)
+    if selected_score not in triple.columns:
         return px.bar(title="Invalid Selection", labels={"Combined Type": "Type Combination"})
-    valid_data = triple_type_values_df_display.dropna(subset=[selected_score, "Combined Type"])
-    if valid_data.empty:
-        return px.bar(title="No Data Available", labels={"Combined Type": "Type Combination", selected_score: "Score"})
-    valid_data['Score Type'] = valid_data[selected_score].apply(lambda x: 'Positive' if x >= 0.5 else 'Negative')
+    triple = triple.dropna(subset=[selected_score, "Combined Type"])
+    if triple.empty:
+        return px.bar(title="No Data Available", labels={"Combined Type": "Type Combination"})
+    triple['Score Type'] = triple[selected_score].apply(lambda x: 'Positive' if x >= 0.5 else 'Negative')
     return px.bar(
-        valid_data,
+        triple,
         x="Combined Type",
         y=selected_score,
         color="Score Type",
-        title="Triple-Type Rankings",
-        labels={selected_score: selected_score, "Combined Type": "Type Combination", "Score Type": "Score Type"}
+        title=f"Triple-Type Rankings – {gen}",
+        labels={"Combined Type": "Type Combination", selected_score: selected_score}
     ).update_layout(
         xaxis={'categoryorder': 'total ascending'},
         yaxis=dict(range=[0, 1.2]),

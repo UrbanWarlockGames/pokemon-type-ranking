@@ -38,12 +38,28 @@ type_values_df = type_values_df.sort_values(by="Total Score", ascending=True)
 dual_type_values_df_display = dual_type_values_df_display.sort_values(by="Total Score", ascending=True)
 triple_type_values_df_display = triple_type_values_df_display.sort_values(by="Total Score", ascending=True)
 
+# Add rank columns (descending: highest score = Rank 1)
+type_values_df["Rank"] = type_values_df["Total Score"].rank(ascending=False, method="min").astype(int)
+dual_type_values_df_display["Rank"] = dual_type_values_df_display["Total Score"].rank(ascending=False, method="min").astype(int)
+triple_type_values_df_display["Rank"] = triple_type_values_df_display["Total Score"].rank(ascending=False, method="min").astype(int)
+
+def move_rank_first(df):
+    cols = list(df.columns)
+    if "Rank" in cols:
+        cols.insert(0, cols.pop(cols.index("Rank")))
+        df = df[cols]
+    return df
+
+type_values_df = move_rank_first(type_values_df)
+dual_type_values_df_display = move_rank_first(dual_type_values_df_display)
+triple_type_values_df_display = move_rank_first(triple_type_values_df_display)
+
 # Normalise the Total Score, Defensive Score, and Offensive Score columns for visualisation
 scaler = MinMaxScaler()
 for column in ["Total Score", "Defensive Score", "Offensive Score"]:
-    type_values_df[f"Normalised {column}"] = scaler.fit_transform(type_values_df[[column]])
-    dual_type_values_df_display[f"Normalised {column}"] = scaler.fit_transform(dual_type_values_df_display[[column]])
-    triple_type_values_df_display[f"Normalised {column}"] = scaler.fit_transform(triple_type_values_df_display[[column]])
+    type_values_df[f"Normalised {column}"] = scaler.fit_transform(type_values_df[[column]]).round(4)
+    dual_type_values_df_display[f"Normalised {column}"] = scaler.fit_transform(dual_type_values_df_display[[column]]).round(4)
+    triple_type_values_df_display[f"Normalised {column}"] = scaler.fit_transform(triple_type_values_df_display[[column]]).round(4)
 
 # Initialise the Dash app
 app = dash.Dash(__name__)
@@ -240,4 +256,4 @@ def update_triple_type_graph(selected_score):
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 8050))
     print(f"Running on port {port}")
-    app.run_server(host="0.0.0.0", port=port, debug=True)
+    app.run_server(host="127.0.0.1", port=port, debug=True)

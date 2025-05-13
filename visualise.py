@@ -256,4 +256,4 @@ def update_triple_type_graph(selected_score):
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 8050))
     print(f"Running on port {port}")
-    app.run_server(host="127.0.0.1", port=port, debug=True)
+    app.run_server(host="0.0.0.0", port=port, debug=True)
